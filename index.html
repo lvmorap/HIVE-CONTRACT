@@ -1,0 +1,1503 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>HIVE CONTRACT - RTS Minimalista</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        body {
+            background: #1a1a2e;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            overflow: hidden;
+        }
+        #gameContainer {
+            position: relative;
+            width: 800px;
+            height: 600px;
+            max-width: 100vw;
+            max-height: 100vh;
+        }
+        #gameCanvas {
+            display: block;
+            background: #16213e;
+            border: 2px solid #0f3460;
+            border-radius: 8px;
+            width: 100%;
+            height: 100%;
+        }
+        #ui {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            pointer-events: none;
+        }
+        .ui-element {
+            pointer-events: auto;
+        }
+        #endTurnBtn {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            padding: 12px 30px;
+            font-size: 16px;
+            font-weight: bold;
+            background: linear-gradient(135deg, #e94560, #533483);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(233,69,96,0.4);
+        }
+        #endTurnBtn:hover {
+            transform: translateX(-50%) scale(1.05);
+            box-shadow: 0 6px 20px rgba(233,69,96,0.6);
+        }
+        #endTurnBtn:disabled {
+            background: #555;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        #modeSelect {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(22, 33, 62, 0.95);
+            padding: 40px;
+            border-radius: 15px;
+            border: 2px solid #e94560;
+            text-align: center;
+            z-index: 100;
+        }
+        #modeSelect h1 {
+            color: #e94560;
+            margin-bottom: 10px;
+            font-size: 32px;
+        }
+        #modeSelect p {
+            color: #aaa;
+            margin-bottom: 30px;
+        }
+        .modeBtn {
+            display: block;
+            width: 200px;
+            margin: 10px auto;
+            padding: 15px;
+            font-size: 16px;
+            background: linear-gradient(135deg, #533483, #0f3460);
+            color: white;
+            border: 2px solid #e94560;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+        .modeBtn:hover {
+            background: linear-gradient(135deg, #e94560, #533483);
+            transform: scale(1.05);
+        }
+        #controls {
+            position: absolute;
+            bottom: 5px;
+            right: 10px;
+            color: #666;
+            font-size: 11px;
+        }
+        #pauseOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 50;
+        }
+        #pauseOverlay.active {
+            display: flex;
+        }
+        #pauseOverlay h2 {
+            color: white;
+            font-size: 48px;
+        }
+        #roundEnd {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            background: rgba(22, 33, 62, 0.95);
+            padding: 30px 50px;
+            border-radius: 15px;
+            border: 2px solid #e94560;
+            text-align: center;
+            display: none;
+            z-index: 100;
+        }
+        #roundEnd.active {
+            display: block;
+        }
+        #roundEnd h2 {
+            color: #e94560;
+            margin-bottom: 15px;
+        }
+        #roundEnd .stats {
+            color: #ccc;
+            margin-bottom: 20px;
+        }
+        #roundEnd button {
+            padding: 12px 30px;
+            font-size: 16px;
+            background: linear-gradient(135deg, #e94560, #533483);
+            color: white;
+            border: none;
+            border-radius: 25px;
+            cursor: pointer;
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas" width="800" height="600"></canvas>
+        <div id="ui">
+            <button id="endTurnBtn" class="ui-element" style="display:none;">TERMINAR TURNO</button>
+            <div id="controls">TAB: Cambiar jugador | R: Reiniciar | P: Pausa/Replay</div>
+        </div>
+        <div id="modeSelect">
+            <h1>🐝 HIVE CONTRACT</h1>
+            <p>RTS Minimalista No-Suma-Cero</p>
+            <button class="modeBtn" onclick="game.startGame('hotseat')">👥 Hotseat (2 Jugadores)</button>
+            <button class="modeBtn" onclick="game.startGame('ai-easy')">🤖 vs IA (Fácil)</button>
+            <button class="modeBtn" onclick="game.startGame('ai-medium')">🤖 vs IA (Medio)</button>
+        </div>
+        <div id="pauseOverlay"><h2>⏸️ PAUSA</h2></div>
+        <div id="roundEnd">
+            <h2 id="roundWinner">¡Jugador 1 gana la ronda!</h2>
+            <div class="stats" id="roundStats"></div>
+            <button onclick="game.nextRound()">Siguiente Ronda</button>
+        </div>
+    </div>
+
+    <script>
+    // ============================================
+    // HIVE CONTRACT - RTS Minimalista 2D
+    // ============================================
+
+    // --- Game Configuration Constants ---
+    const CONFIG = {
+        // Scoring
+        FIRST_CLAIMER_SCORE_MULTIPLIER: 0.1,
+        VICTORY_SCORE_THRESHOLD: 50,
+        
+        // Map generation
+        MAX_CONNECTION_DISTANCE: 180,
+        
+        // Timing
+        PLANNING_TIME_SECONDS: 30,
+        RESOLVE_TIME_SECONDS: 5,
+        
+        // Replay
+        MAX_REPLAY_ROUNDS: 3,
+        
+        // AI
+        AI_EASY_GREEDY_FACTOR: 0.5,
+        AI_MEDIUM_GREEDY_FACTOR: 0.8
+    };
+
+    // --- Audio Manager (Web Audio API simple) ---
+    class AudioManager {
+        constructor() {
+            this.enabled = true;
+            try {
+                this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+            } catch (e) {
+                this.enabled = false;
+            }
+        }
+
+        beep(freq = 440, duration = 0.1, type = 'sine') {
+            if (!this.enabled || !this.ctx) return;
+            try {
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+                osc.type = type;
+                osc.frequency.value = freq;
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + duration);
+                osc.start();
+                osc.stop(this.ctx.currentTime + duration);
+            } catch (e) {}
+        }
+
+        playCapture() { this.beep(880, 0.15, 'square'); }
+        playMove() { this.beep(440, 0.05, 'sine'); }
+        playSelect() { this.beep(660, 0.08, 'triangle'); }
+        playWin() {
+            this.beep(523, 0.1);
+            setTimeout(() => this.beep(659, 0.1), 100);
+            setTimeout(() => this.beep(784, 0.2), 200);
+        }
+    }
+
+    // --- Node Class ---
+    class Node {
+        constructor(x, y, id) {
+            this.x = x;
+            this.y = y;
+            this.id = id;
+            this.radius = 30;
+            this.owner = 0; // 0=neutral, 1=player1, 2=player2
+            this.firstClaimer = 0; // Who claimed first (for scoring)
+            this.value = 1;
+            this.connections = [];
+            this.pulseAnim = 0;
+            this.incomingCells = { 1: 0, 2: 0 };
+        }
+
+        draw(ctx) {
+            // Pulse animation
+            const pulseRadius = this.radius + Math.sin(this.pulseAnim) * 3;
+            
+            // Glow effect
+            if (this.owner !== 0) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, pulseRadius + 8, 0, Math.PI * 2);
+                ctx.fillStyle = this.owner === 1 ? 'rgba(0,100,255,0.2)' : 'rgba(255,100,100,0.2)';
+                ctx.fill();
+            }
+
+            // Main circle
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, pulseRadius, 0, Math.PI * 2);
+            
+            if (this.owner === 0) {
+                ctx.fillStyle = '#2a2a4a';
+                ctx.strokeStyle = '#555';
+            } else if (this.owner === 1) {
+                ctx.fillStyle = '#1a3a8a';
+                ctx.strokeStyle = '#4a8aff';
+            } else {
+                ctx.fillStyle = '#8a1a1a';
+                ctx.strokeStyle = '#ff4a4a';
+            }
+            
+            ctx.lineWidth = 3;
+            ctx.fill();
+            ctx.stroke();
+
+            // First claimer indicator (small inner circle)
+            if (this.firstClaimer !== 0) {
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 8, 0, Math.PI * 2);
+                ctx.fillStyle = this.firstClaimer === 1 ? '#4a8aff' : '#ff4a4a';
+                ctx.fill();
+            }
+
+            // Value text
+            ctx.fillStyle = '#fff';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(this.value.toString(), this.x, this.y + (this.firstClaimer ? 18 : 0));
+
+            // Show incoming cells preview during planning
+            if (this.incomingCells[1] > 0 || this.incomingCells[2] > 0) {
+                let yOffset = -this.radius - 15;
+                if (this.incomingCells[1] > 0) {
+                    ctx.fillStyle = '#4a8aff';
+                    ctx.fillText(`+${this.incomingCells[1]}`, this.x - 15, this.y + yOffset);
+                }
+                if (this.incomingCells[2] > 0) {
+                    ctx.fillStyle = '#ff4a4a';
+                    ctx.fillText(`+${this.incomingCells[2]}`, this.x + 15, this.y + yOffset);
+                }
+            }
+        }
+
+        update(dt) {
+            this.pulseAnim += dt * 3;
+        }
+
+        isAdjacent(other) {
+            return this.connections.includes(other.id);
+        }
+
+        distanceTo(other) {
+            const dx = this.x - other.x;
+            const dy = this.y - other.y;
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        capture(player) {
+            if (this.owner !== player) {
+                this.owner = player;
+                if (this.firstClaimer === 0) {
+                    this.firstClaimer = player;
+                }
+                return true;
+            }
+            return false;
+        }
+
+        resetIncoming() {
+            this.incomingCells = { 1: 0, 2: 0 };
+        }
+    }
+
+    // --- Cell Class ---
+    class Cell {
+        constructor(x, y, player) {
+            this.x = x;
+            this.y = y;
+            this.startX = x;
+            this.startY = y;
+            this.player = player;
+            this.targetNode = null;
+            this.homeNode = null;
+            this.moving = false;
+            this.progress = 0;
+            this.speed = 1;
+            this.size = 12;
+            this.arrived = false;
+        }
+
+        draw(ctx) {
+            const angle = this.targetNode ? 
+                Math.atan2(this.targetNode.y - this.y, this.targetNode.x - this.x) : 0;
+            
+            ctx.save();
+            ctx.translate(this.x, this.y);
+            ctx.rotate(angle);
+
+            // Triangle
+            ctx.beginPath();
+            ctx.moveTo(this.size, 0);
+            ctx.lineTo(-this.size / 2, -this.size / 2);
+            ctx.lineTo(-this.size / 2, this.size / 2);
+            ctx.closePath();
+
+            ctx.fillStyle = this.player === 1 ? '#4a8aff' : '#ff4a4a';
+            ctx.fill();
+            ctx.strokeStyle = this.player === 1 ? '#0044cc' : '#cc0000';
+            ctx.lineWidth = 2;
+            ctx.stroke();
+
+            ctx.restore();
+        }
+
+        setTarget(node) {
+            this.targetNode = node;
+            this.startX = this.x;
+            this.startY = this.y;
+            this.progress = 0;
+            this.arrived = false;
+        }
+
+        update(dt, resolving) {
+            if (!resolving || !this.targetNode) return;
+            
+            this.moving = true;
+            this.progress += dt * this.speed * 0.4;
+            
+            // Ease in-out quadratic function (easeInOutQuad):
+            // First half accelerates, second half decelerates for smooth motion
+            const t = this.progress < 0.5 ? 
+                2 * this.progress * this.progress : 
+                1 - Math.pow(-2 * this.progress + 2, 2) / 2;
+            
+            this.x = this.startX + (this.targetNode.x - this.startX) * Math.min(t, 1);
+            this.y = this.startY + (this.targetNode.y - this.startY) * Math.min(t, 1);
+
+            if (this.progress >= 1) {
+                this.arrived = true;
+                this.x = this.targetNode.x;
+                this.y = this.targetNode.y;
+                this.homeNode = this.targetNode;
+            }
+        }
+    }
+
+    // --- Player Class ---
+    class Player {
+        constructor(id, color, isAI = false) {
+            this.id = id;
+            this.color = color;
+            this.isAI = isAI;
+            this.aiDifficulty = 'easy';
+            this.score = 0;
+            this.roundsWon = 0;
+            this.cells = [];
+            this.resources = 0;
+            this.plannedMoves = [];
+            this.turnEnded = false;
+        }
+
+        reset() {
+            this.score = 0;
+            this.resources = 0;
+            this.cells = [];
+            this.plannedMoves = [];
+            this.turnEnded = false;
+        }
+
+        updateResources(nodes) {
+            let resourceGain = 0;
+            for (const node of nodes) {
+                if (node.owner === this.id) {
+                    resourceGain += node.value;
+                }
+                // Score for first claimed nodes
+                if (node.firstClaimer === this.id && node.owner === this.id) {
+                    this.score += node.value * CONFIG.FIRST_CLAIMER_SCORE_MULTIPLIER;
+                }
+            }
+            this.resources += resourceGain;
+            return resourceGain;
+        }
+
+        planMove(cell, targetNode) {
+            this.plannedMoves.push({ cell, targetNode });
+            targetNode.incomingCells[this.id]++;
+        }
+
+        clearPlans() {
+            this.plannedMoves = [];
+            this.turnEnded = false;
+        }
+    }
+
+    // --- Map Generator ---
+    class MapGenerator {
+        constructor(width, height) {
+            this.width = width;
+            this.height = height;
+        }
+
+        generate(numNodes = 10) {
+            const nodes = [];
+            const margin = 80;
+            const spacing = 120;
+            
+            // Create hex-like grid
+            const cols = Math.floor((this.width - margin * 2) / spacing);
+            const rows = Math.floor((this.height - margin * 2) / (spacing * 0.866));
+            
+            let id = 0;
+            const positions = [];
+
+            for (let row = 0; row < rows && positions.length < numNodes + 4; row++) {
+                for (let col = 0; col < cols && positions.length < numNodes + 4; col++) {
+                    const offsetX = row % 2 === 0 ? 0 : spacing / 2;
+                    const x = margin + col * spacing + offsetX + (Math.random() - 0.5) * 40;
+                    const y = margin + row * spacing * 0.866 + (Math.random() - 0.5) * 40;
+                    
+                    if (x > margin && x < this.width - margin && 
+                        y > margin && y < this.height - margin) {
+                        positions.push({ x, y });
+                    }
+                }
+            }
+
+            // Randomly select positions
+            const shuffled = positions.sort(() => Math.random() - 0.5);
+            const selected = shuffled.slice(0, Math.min(numNodes, shuffled.length));
+
+            for (const pos of selected) {
+                nodes.push(new Node(pos.x, pos.y, id++));
+            }
+
+            // Create connections (adjacent nodes within distance)
+            for (let i = 0; i < nodes.length; i++) {
+                for (let j = i + 1; j < nodes.length; j++) {
+                    const dist = nodes[i].distanceTo(nodes[j]);
+                    if (dist < CONFIG.MAX_CONNECTION_DISTANCE) {
+                        nodes[i].connections.push(nodes[j].id);
+                        nodes[j].connections.push(nodes[i].id);
+                    }
+                }
+            }
+
+            // Ensure all nodes are connected (minimum spanning tree)
+            this.ensureConnected(nodes);
+
+            return nodes;
+        }
+
+        ensureConnected(nodes) {
+            if (nodes.length < 2) return;
+            
+            const visited = new Set([0]);
+            const queue = [nodes[0]];
+
+            while (queue.length > 0 && visited.size < nodes.length) {
+                const current = queue.shift();
+                for (const connId of current.connections) {
+                    if (!visited.has(connId)) {
+                        visited.add(connId);
+                        queue.push(nodes[connId]);
+                    }
+                }
+            }
+
+            // Connect unvisited nodes
+            for (let i = 0; i < nodes.length; i++) {
+                if (!visited.has(i)) {
+                    let closest = null;
+                    let minDist = Infinity;
+                    for (const v of visited) {
+                        const dist = nodes[i].distanceTo(nodes[v]);
+                        if (dist < minDist) {
+                            minDist = dist;
+                            closest = v;
+                        }
+                    }
+                    if (closest !== null) {
+                        nodes[i].connections.push(closest);
+                        nodes[closest].connections.push(i);
+                        visited.add(i);
+                    }
+                }
+            }
+        }
+
+        reconfigure(nodes, collaborationRate) {
+            // If high collaboration (>70%), add cooperative nodes in center
+            if (collaborationRate > 0.7) {
+                const centerX = this.width / 2;
+                const centerY = this.height / 2;
+                
+                // Move some nodes closer to center
+                const nodesToMove = Math.floor(nodes.length * 0.2);
+                for (let i = 0; i < nodesToMove; i++) {
+                    const node = nodes[Math.floor(Math.random() * nodes.length)];
+                    node.x = node.x + (centerX - node.x) * 0.3;
+                    node.y = node.y + (centerY - node.y) * 0.3;
+                }
+
+                // Add 1-2 new nodes in cooperative zones
+                const newNodesCount = Math.floor(Math.random() * 2) + 1;
+                for (let i = 0; i < newNodesCount; i++) {
+                    const x = centerX + (Math.random() - 0.5) * 150;
+                    const y = centerY + (Math.random() - 0.5) * 150;
+                    const newNode = new Node(x, y, nodes.length);
+                    newNode.value = 2; // Higher value
+                    
+                    // Connect to nearby nodes
+                    for (const node of nodes) {
+                        if (newNode.distanceTo(node) < CONFIG.MAX_CONNECTION_DISTANCE) {
+                            newNode.connections.push(node.id);
+                            node.connections.push(newNode.id);
+                        }
+                    }
+                    
+                    if (newNode.connections.length > 0) {
+                        nodes.push(newNode);
+                    }
+                }
+            }
+        }
+    }
+
+    // --- AI Class ---
+    class AI {
+        constructor(difficulty = 'easy') {
+            this.difficulty = difficulty;
+            this.greedyFactor = difficulty === 'easy' ? 
+                CONFIG.AI_EASY_GREEDY_FACTOR : CONFIG.AI_MEDIUM_GREEDY_FACTOR;
+        }
+
+        planMoves(player, nodes, enemyCells) {
+            const moves = [];
+            const availableCells = player.cells.filter(c => !c.targetNode);
+            
+            if (availableCells.length === 0) return moves;
+
+            // Evaluate all nodes
+            const evaluations = nodes.map(node => ({
+                node,
+                score: this.evaluateNode(node, player, nodes, enemyCells)
+            })).sort((a, b) => b.score - a.score);
+
+            // Select top targets
+            const numTargets = Math.min(3, evaluations.length);
+            const targets = evaluations.slice(0, numTargets);
+
+            // Distribute cells to targets
+            let cellIndex = 0;
+            for (const target of targets) {
+                if (cellIndex >= availableCells.length) break;
+                
+                const cellsToSend = this.difficulty === 'easy' ? 1 : 
+                    Math.min(2, availableCells.length - cellIndex);
+                
+                for (let i = 0; i < cellsToSend && cellIndex < availableCells.length; i++) {
+                    moves.push({
+                        cell: availableCells[cellIndex],
+                        target: target.node
+                    });
+                    cellIndex++;
+                }
+            }
+
+            return moves;
+        }
+
+        evaluateNode(node, player, nodes, enemyCells) {
+            let score = 0;
+            
+            // Base value
+            score += node.value * 10;
+            
+            // Prefer neutral or enemy nodes
+            if (node.owner === 0) score += 20;
+            else if (node.owner !== player.id) score += 15;
+            else score -= 10; // Already owned
+
+            // Distance penalty (from any friendly cell)
+            let minDist = Infinity;
+            for (const cell of player.cells) {
+                const dist = Math.sqrt(
+                    (cell.x - node.x) ** 2 + (cell.y - node.y) ** 2
+                );
+                minDist = Math.min(minDist, dist);
+            }
+            score -= minDist * 0.05;
+
+            // Enemy presence penalty
+            const enemyNearby = enemyCells.filter(c => 
+                Math.sqrt((c.x - node.x) ** 2 + (c.y - node.y) ** 2) < 100
+            ).length;
+            score -= enemyNearby * 5 * this.greedyFactor;
+
+            // Connectivity bonus
+            score += node.connections.length * 3;
+
+            // Random factor for variety
+            score += Math.random() * 10;
+
+            return score;
+        }
+    }
+
+    // --- Input Handler ---
+    class InputHandler {
+        constructor(game) {
+            this.game = game;
+            this.canvas = game.canvas;
+            this.selectedCell = null;
+            this.hoveredNode = null;
+            
+            this.setupListeners();
+        }
+
+        setupListeners() {
+            // Mouse events
+            this.canvas.addEventListener('mousedown', (e) => this.handleMouseDown(e));
+            this.canvas.addEventListener('mousemove', (e) => this.handleMouseMove(e));
+            this.canvas.addEventListener('mouseup', (e) => this.handleMouseUp(e));
+            
+            // Touch events
+            this.canvas.addEventListener('touchstart', (e) => this.handleTouch(e, 'down'));
+            this.canvas.addEventListener('touchmove', (e) => this.handleTouch(e, 'move'));
+            this.canvas.addEventListener('touchend', (e) => this.handleTouch(e, 'up'));
+            
+            // Keyboard
+            document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        }
+
+        getMousePos(e) {
+            const rect = this.canvas.getBoundingClientRect();
+            const scaleX = this.canvas.width / rect.width;
+            const scaleY = this.canvas.height / rect.height;
+            return {
+                x: (e.clientX - rect.left) * scaleX,
+                y: (e.clientY - rect.top) * scaleY
+            };
+        }
+
+        handleTouch(e, type) {
+            e.preventDefault();
+            if (e.touches.length > 0 || type === 'up') {
+                const touch = type === 'up' ? e.changedTouches[0] : e.touches[0];
+                const mouseEvent = {
+                    clientX: touch.clientX,
+                    clientY: touch.clientY
+                };
+                
+                if (type === 'down') this.handleMouseDown(mouseEvent);
+                else if (type === 'move') this.handleMouseMove(mouseEvent);
+                else if (type === 'up') this.handleMouseUp(mouseEvent);
+            }
+        }
+
+        handleMouseDown(e) {
+            if (this.game.phase !== 'planning') return;
+            
+            const pos = this.getMousePos(e);
+            const player = this.game.getCurrentPlayer();
+            
+            if (!player || player.isAI || player.turnEnded) return;
+
+            // Check if clicking on own cell
+            for (const cell of player.cells) {
+                const dist = Math.sqrt((pos.x - cell.x) ** 2 + (pos.y - cell.y) ** 2);
+                if (dist < cell.size + 5 && !cell.targetNode) {
+                    this.selectedCell = cell;
+                    this.game.audio.playSelect();
+                    return;
+                }
+            }
+
+            // Check if clicking on node (for quick move of any available cell)
+            for (const node of this.game.nodes) {
+                const dist = Math.sqrt((pos.x - node.x) ** 2 + (pos.y - node.y) ** 2);
+                if (dist < node.radius) {
+                    // Find available cell
+                    const availableCell = player.cells.find(c => !c.targetNode);
+                    if (availableCell) {
+                        player.planMove(availableCell, node);
+                        availableCell.setTarget(node);
+                        this.game.audio.playMove();
+                    }
+                    return;
+                }
+            }
+        }
+
+        handleMouseMove(e) {
+            const pos = this.getMousePos(e);
+            this.hoveredNode = null;
+            
+            for (const node of this.game.nodes) {
+                const dist = Math.sqrt((pos.x - node.x) ** 2 + (pos.y - node.y) ** 2);
+                if (dist < node.radius) {
+                    this.hoveredNode = node;
+                    break;
+                }
+            }
+        }
+
+        handleMouseUp(e) {
+            if (!this.selectedCell) return;
+            
+            const pos = this.getMousePos(e);
+            const player = this.game.getCurrentPlayer();
+            
+            // Check if releasing on node
+            for (const node of this.game.nodes) {
+                const dist = Math.sqrt((pos.x - node.x) ** 2 + (pos.y - node.y) ** 2);
+                if (dist < node.radius) {
+                    player.planMove(this.selectedCell, node);
+                    this.selectedCell.setTarget(node);
+                    this.game.audio.playMove();
+                    break;
+                }
+            }
+            
+            this.selectedCell = null;
+        }
+
+        handleKeyDown(e) {
+            switch (e.key.toLowerCase()) {
+                case 'tab':
+                    e.preventDefault();
+                    if (this.game.phase === 'planning' && this.game.mode === 'hotseat') {
+                        this.game.switchPlayer();
+                    }
+                    break;
+                case 'r':
+                    this.game.restart();
+                    break;
+                case 'p':
+                    this.game.togglePause();
+                    break;
+                case ' ':
+                case 'enter':
+                    this.game.endTurn();
+                    break;
+            }
+        }
+    }
+
+    // --- UI Manager ---
+    class UIManager {
+        constructor(game) {
+            this.game = game;
+            this.endTurnBtn = document.getElementById('endTurnBtn');
+            this.modeSelect = document.getElementById('modeSelect');
+            this.pauseOverlay = document.getElementById('pauseOverlay');
+            this.roundEnd = document.getElementById('roundEnd');
+            
+            this.endTurnBtn.addEventListener('click', () => game.endTurn());
+        }
+
+        update() {
+            const player = this.game.getCurrentPlayer();
+            
+            if (this.game.phase === 'planning' && player && !player.isAI) {
+                this.endTurnBtn.style.display = 'block';
+                this.endTurnBtn.disabled = player.turnEnded;
+                this.endTurnBtn.textContent = player.turnEnded ? 
+                    'ESPERANDO...' : `TERMINAR (J${player.id})`;
+            } else {
+                this.endTurnBtn.style.display = 'none';
+            }
+        }
+
+        showModeSelect(show) {
+            this.modeSelect.style.display = show ? 'block' : 'none';
+        }
+
+        showPause(show) {
+            this.pauseOverlay.classList.toggle('active', show);
+        }
+
+        showRoundEnd(winner, stats) {
+            this.roundEnd.classList.add('active');
+            document.getElementById('roundWinner').textContent = 
+                winner === 0 ? '¡Empate!' : `¡Jugador ${winner} gana la ronda!`;
+            document.getElementById('roundStats').innerHTML = `
+                <p>Colaboración: ${Math.round(stats.collaboration * 100)}%</p>
+                <p>Nodos capturados - J1: ${stats.nodesP1}, J2: ${stats.nodesP2}</p>
+                <p>Puntuación - J1: ${Math.round(stats.scoreP1)}, J2: ${Math.round(stats.scoreP2)}</p>
+            `;
+        }
+
+        hideRoundEnd() {
+            this.roundEnd.classList.remove('active');
+        }
+
+        drawHUD(ctx) {
+            const p1 = this.game.players[0];
+            const p2 = this.game.players[1];
+            
+            // Background bar
+            ctx.fillStyle = 'rgba(0,0,0,0.5)';
+            ctx.fillRect(0, 0, 800, 50);
+            ctx.fillRect(0, 550, 800, 50);
+            
+            // Round indicator
+            ctx.fillStyle = '#e94560';
+            ctx.font = 'bold 14px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText(`RONDA ${this.game.currentRound}/5`, 400, 20);
+            
+            // Player scores
+            ctx.textAlign = 'left';
+            ctx.fillStyle = '#4a8aff';
+            ctx.fillText(`J1: ${Math.round(p1.score)} pts`, 20, 20);
+            ctx.fillText(`Rondas: ${p1.roundsWon}`, 20, 38);
+            
+            ctx.textAlign = 'right';
+            ctx.fillStyle = '#ff4a4a';
+            ctx.fillText(`J2: ${Math.round(p2.score)} pts`, 780, 20);
+            ctx.fillText(`Rondas: ${p2.roundsWon}`, 780, 38);
+
+            // Resource bars
+            this.drawResourceBar(ctx, 200, 30, 150, 12, p1.resources / 100, '#4a8aff');
+            this.drawResourceBar(ctx, 450, 30, 150, 12, p2.resources / 100, '#ff4a4a');
+            
+            // Global resource bar
+            const globalRes = (p1.resources + p2.resources) / 200;
+            this.drawResourceBar(ctx, 300, 560, 200, 15, globalRes, '#4ade80');
+            ctx.fillStyle = '#4ade80';
+            ctx.textAlign = 'center';
+            ctx.fillText('Recursos Globales', 400, 585);
+
+            // Timer
+            if (this.game.phase === 'planning') {
+                const timeLeft = Math.max(0, Math.ceil(this.game.planningTimeLeft));
+                ctx.fillStyle = timeLeft < 10 ? '#e94560' : '#fff';
+                ctx.font = 'bold 24px Arial';
+                ctx.fillText(`${timeLeft}s`, 400, 45);
+            }
+
+            // Phase indicator
+            ctx.font = '12px Arial';
+            ctx.fillStyle = '#aaa';
+            ctx.textAlign = 'center';
+            
+            if (this.game.phase === 'planning') {
+                const player = this.game.getCurrentPlayer();
+                const text = player ? 
+                    (player.isAI ? 'IA pensando...' : 
+                     (player.turnEnded ? `J${player.id} listo - esperando` : `Turno J${player.id}`)) 
+                    : '';
+                ctx.fillText(text, 400, 575);
+            } else if (this.game.phase === 'resolving') {
+                ctx.fillText('¡Resolviendo!', 400, 575);
+            }
+
+            // Current player indicator in hotseat
+            if (this.game.mode === 'hotseat' && this.game.phase === 'planning') {
+                const player = this.game.getCurrentPlayer();
+                if (player && !player.turnEnded) {
+                    ctx.fillStyle = player.id === 1 ? '#4a8aff' : '#ff4a4a';
+                    ctx.fillRect(player.id === 1 ? 0 : 700, 0, 100, 5);
+                }
+            }
+        }
+
+        drawResourceBar(ctx, x, y, width, height, fill, color) {
+            ctx.fillStyle = '#333';
+            ctx.fillRect(x, y, width, height);
+            ctx.fillStyle = color;
+            ctx.fillRect(x, y, width * Math.min(fill, 1), height);
+            ctx.strokeStyle = '#555';
+            ctx.lineWidth = 1;
+            ctx.strokeRect(x, y, width, height);
+        }
+    }
+
+    // --- Replay System ---
+    class ReplaySystem {
+        constructor() {
+            this.rounds = [];
+            this.currentRound = [];
+        }
+
+        recordAction(action) {
+            this.currentRound.push({ ...action, timestamp: Date.now() });
+        }
+
+        endRound() {
+            this.rounds.push([...this.currentRound]);
+            this.currentRound = [];
+            
+            // Keep only last N rounds (configurable)
+            if (this.rounds.length > CONFIG.MAX_REPLAY_ROUNDS) {
+                this.rounds.shift();
+            }
+        }
+
+        getLastRound() {
+            return this.rounds.length > 0 ? this.rounds[this.rounds.length - 1] : [];
+        }
+    }
+
+    // --- Main Game Class ---
+    class Game {
+        constructor() {
+            this.canvas = document.getElementById('gameCanvas');
+            this.ctx = this.canvas.getContext('2d');
+            
+            this.width = 800;
+            this.height = 600;
+            
+            this.audio = new AudioManager();
+            this.mapGen = new MapGenerator(this.width, this.height);
+            this.replay = new ReplaySystem();
+            
+            this.nodes = [];
+            this.players = [];
+            this.ai = null;
+            
+            this.mode = 'menu'; // menu, hotseat, ai-easy, ai-medium
+            this.phase = 'menu'; // menu, planning, resolving, roundEnd, gameEnd
+            this.currentPlayerIndex = 0;
+            this.currentRound = 1;
+            this.maxRounds = 5;
+            
+            this.planningTime = 30;
+            this.planningTimeLeft = this.planningTime;
+            this.resolveTime = 5;
+            this.resolveProgress = 0;
+            
+            this.paused = false;
+            this.lastTime = 0;
+            
+            this.input = new InputHandler(this);
+            this.ui = new UIManager(this);
+            
+            this.loadLeaderboard();
+            this.setupResize();
+            this.gameLoop(0);
+        }
+
+        setupResize() {
+            const resize = () => {
+                const container = document.getElementById('gameContainer');
+                const maxW = window.innerWidth;
+                const maxH = window.innerHeight;
+                const scale = Math.min(maxW / 800, maxH / 600);
+                container.style.transform = `scale(${scale})`;
+                container.style.transformOrigin = 'center center';
+            };
+            window.addEventListener('resize', resize);
+            resize();
+        }
+
+        loadLeaderboard() {
+            try {
+                this.leaderboard = JSON.parse(localStorage.getItem('hivecontract_lb')) || [];
+            } catch {
+                this.leaderboard = [];
+            }
+        }
+
+        saveLeaderboard() {
+            try {
+                localStorage.setItem('hivecontract_lb', JSON.stringify(this.leaderboard.slice(0, 10)));
+            } catch {}
+        }
+
+        startGame(mode) {
+            this.mode = mode;
+            this.phase = 'planning';
+            this.currentRound = 1;
+            
+            // Create players
+            this.players = [
+                new Player(1, '#4a8aff', false),
+                new Player(2, '#ff4a4a', mode !== 'hotseat')
+            ];
+            
+            if (mode !== 'hotseat') {
+                this.ai = new AI(mode === 'ai-easy' ? 'easy' : 'medium');
+                this.players[1].aiDifficulty = this.ai.difficulty;
+            }
+            
+            this.ui.showModeSelect(false);
+            this.setupRound();
+            
+            // Enable audio context on user interaction
+            if (this.audio.ctx && this.audio.ctx.state === 'suspended') {
+                this.audio.ctx.resume();
+            }
+        }
+
+        setupRound() {
+            // Generate map
+            const numNodes = 9 + Math.floor(Math.random() * 4);
+            this.nodes = this.mapGen.generate(numNodes);
+            
+            // Reset players
+            for (const player of this.players) {
+                player.reset();
+            }
+            
+            // Spawn cells
+            this.spawnCells();
+            
+            // Reset phase
+            this.phase = 'planning';
+            this.currentPlayerIndex = 0;
+            this.planningTimeLeft = this.planningTime;
+            this.resolveProgress = 0;
+            
+            this.ui.hideRoundEnd();
+        }
+
+        spawnCells() {
+            // Find edge nodes for spawning
+            const sortedByX = [...this.nodes].sort((a, b) => a.x - b.x);
+            const leftNodes = sortedByX.slice(0, 3);
+            const rightNodes = sortedByX.slice(-3);
+            
+            // Spawn 3 cells per player
+            for (let i = 0; i < 3; i++) {
+                const p1Node = leftNodes[i % leftNodes.length];
+                const p2Node = rightNodes[i % rightNodes.length];
+                
+                const cell1 = new Cell(p1Node.x, p1Node.y, 1);
+                cell1.homeNode = p1Node;
+                this.players[0].cells.push(cell1);
+                
+                const cell2 = new Cell(p2Node.x, p2Node.y, 2);
+                cell2.homeNode = p2Node;
+                this.players[1].cells.push(cell2);
+            }
+        }
+
+        getCurrentPlayer() {
+            return this.players[this.currentPlayerIndex];
+        }
+
+        switchPlayer() {
+            if (this.mode === 'hotseat') {
+                this.currentPlayerIndex = this.currentPlayerIndex === 0 ? 1 : 0;
+            }
+        }
+
+        endTurn() {
+            const player = this.getCurrentPlayer();
+            if (!player || player.turnEnded) return;
+            
+            player.turnEnded = true;
+            
+            // Check if both players ready
+            if (this.players.every(p => p.turnEnded)) {
+                this.startResolution();
+            } else if (this.mode === 'hotseat') {
+                this.switchPlayer();
+            }
+        }
+
+        startResolution() {
+            this.phase = 'resolving';
+            this.resolveProgress = 0;
+            
+            // Record moves for replay
+            for (const player of this.players) {
+                for (const move of player.plannedMoves) {
+                    this.replay.recordAction({
+                        type: 'move',
+                        player: player.id,
+                        cellFrom: { x: move.cell.x, y: move.cell.y },
+                        targetNode: move.targetNode.id
+                    });
+                }
+            }
+        }
+
+        resolvePhase(dt) {
+            this.resolveProgress += dt / this.resolveTime;
+            
+            // Move all cells
+            for (const player of this.players) {
+                for (const cell of player.cells) {
+                    cell.update(dt, true);
+                }
+            }
+            
+            // Check if resolution complete
+            if (this.resolveProgress >= 1) {
+                this.finishResolution();
+            }
+        }
+
+        finishResolution() {
+            // Process combat at each node
+            for (const node of this.nodes) {
+                const cellsAtNode = { 1: [], 2: [] };
+                
+                for (const player of this.players) {
+                    for (const cell of player.cells) {
+                        if (cell.arrived && cell.targetNode === node) {
+                            cellsAtNode[player.id].push(cell);
+                        }
+                    }
+                }
+                
+                const p1Count = cellsAtNode[1].length;
+                const p2Count = cellsAtNode[2].length;
+                
+                if (p1Count > p2Count && p1Count > 0) {
+                    if (node.capture(1)) {
+                        this.audio.playCapture();
+                    }
+                } else if (p2Count > p1Count && p2Count > 0) {
+                    if (node.capture(2)) {
+                        this.audio.playCapture();
+                    }
+                }
+                // Tie = no change
+                
+                node.resetIncoming();
+            }
+            
+            // Update resources
+            for (const player of this.players) {
+                player.updateResources(this.nodes);
+                
+                // Reset cells
+                for (const cell of player.cells) {
+                    cell.moving = false;
+                    cell.targetNode = null;
+                    cell.arrived = false;
+                }
+                player.clearPlans();
+            }
+            
+            // Check victory
+            const winner = this.checkVictory();
+            if (winner !== null) {
+                this.endRound(winner);
+            } else {
+                // Next turn
+                this.phase = 'planning';
+                this.planningTimeLeft = this.planningTime;
+                this.currentPlayerIndex = 0;
+            }
+        }
+
+        checkVictory() {
+            const scoreToWin = CONFIG.VICTORY_SCORE_THRESHOLD;
+            
+            if (this.players[0].score >= scoreToWin && this.players[1].score >= scoreToWin) {
+                return this.players[0].score > this.players[1].score ? 1 : 
+                       this.players[1].score > this.players[0].score ? 2 : 0;
+            }
+            if (this.players[0].score >= scoreToWin) return 1;
+            if (this.players[1].score >= scoreToWin) return 2;
+            
+            return null;
+        }
+
+        calculateCollaboration() {
+            let sharedNodes = 0;
+            let p1Nodes = 0;
+            let p2Nodes = 0;
+            
+            for (const node of this.nodes) {
+                if (node.owner === 1) p1Nodes++;
+                if (node.owner === 2) p2Nodes++;
+                if (node.firstClaimer !== 0 && node.owner !== 0 && 
+                    node.firstClaimer !== node.owner) {
+                    sharedNodes++;
+                }
+            }
+            
+            const totalOwned = p1Nodes + p2Nodes;
+            return totalOwned > 0 ? sharedNodes / totalOwned : 0;
+        }
+
+        endRound(winner) {
+            this.phase = 'roundEnd';
+            
+            if (winner === 1) this.players[0].roundsWon++;
+            else if (winner === 2) this.players[1].roundsWon++;
+            
+            this.audio.playWin();
+            
+            const stats = {
+                collaboration: this.calculateCollaboration(),
+                nodesP1: this.nodes.filter(n => n.owner === 1).length,
+                nodesP2: this.nodes.filter(n => n.owner === 2).length,
+                scoreP1: this.players[0].score,
+                scoreP2: this.players[1].score
+            };
+            
+            this.replay.endRound();
+            
+            // Check game end
+            if (this.players[0].roundsWon >= 3 || this.players[1].roundsWon >= 3) {
+                this.endGame();
+                return;
+            }
+            
+            this.ui.showRoundEnd(winner, stats);
+            
+            // Reconfigure map if high collaboration
+            if (stats.collaboration > 0.7) {
+                this.mapGen.reconfigure(this.nodes, stats.collaboration);
+            }
+        }
+
+        nextRound() {
+            this.currentRound++;
+            this.setupRound();
+        }
+
+        endGame() {
+            const winner = this.players[0].roundsWon > this.players[1].roundsWon ? 1 : 2;
+            
+            // Save to leaderboard
+            this.leaderboard.push({
+                date: new Date().toISOString(),
+                winner: winner,
+                mode: this.mode,
+                p1Rounds: this.players[0].roundsWon,
+                p2Rounds: this.players[1].roundsWon
+            });
+            this.saveLeaderboard();
+            
+            // Show final result
+            this.phase = 'gameEnd';
+            this.ui.showRoundEnd(winner, {
+                collaboration: this.calculateCollaboration(),
+                nodesP1: this.nodes.filter(n => n.owner === 1).length,
+                nodesP2: this.nodes.filter(n => n.owner === 2).length,
+                scoreP1: this.players[0].score,
+                scoreP2: this.players[1].score
+            });
+            document.getElementById('roundWinner').textContent = 
+                `🏆 ¡JUGADOR ${winner} GANA EL JUEGO!`;
+            document.querySelector('#roundEnd button').textContent = 'Jugar de nuevo';
+            document.querySelector('#roundEnd button').onclick = () => this.restart();
+        }
+
+        restart() {
+            this.phase = 'menu';
+            this.mode = 'menu';
+            this.ui.showModeSelect(true);
+            this.ui.hideRoundEnd();
+        }
+
+        togglePause() {
+            if (this.phase === 'menu' || this.phase === 'roundEnd' || this.phase === 'gameEnd') return;
+            this.paused = !this.paused;
+            this.ui.showPause(this.paused);
+        }
+
+        updateAI() {
+            const aiPlayer = this.players[1];
+            if (!aiPlayer.isAI || aiPlayer.turnEnded) return;
+            
+            // AI "thinks" for a moment
+            if (this.planningTimeLeft < this.planningTime - 1) {
+                const moves = this.ai.planMoves(
+                    aiPlayer, 
+                    this.nodes, 
+                    this.players[0].cells
+                );
+                
+                for (const move of moves) {
+                    aiPlayer.planMove(move.cell, move.target);
+                    move.cell.setTarget(move.target);
+                }
+                
+                aiPlayer.turnEnded = true;
+                
+                if (this.players[0].turnEnded) {
+                    this.startResolution();
+                }
+            }
+        }
+
+        update(dt) {
+            if (this.paused || this.phase === 'menu') return;
+            
+            // Update nodes
+            for (const node of this.nodes) {
+                node.update(dt);
+            }
+            
+            if (this.phase === 'planning') {
+                this.planningTimeLeft -= dt;
+                
+                // AI logic
+                if (this.mode !== 'hotseat') {
+                    this.updateAI();
+                }
+                
+                // Auto-end turn when time runs out
+                if (this.planningTimeLeft <= 0) {
+                    for (const player of this.players) {
+                        player.turnEnded = true;
+                    }
+                    this.startResolution();
+                }
+            } else if (this.phase === 'resolving') {
+                this.resolvePhase(dt);
+            }
+            
+            this.ui.update();
+        }
+
+        draw() {
+            const ctx = this.ctx;
+            
+            // Clear
+            ctx.fillStyle = '#16213e';
+            ctx.fillRect(0, 0, this.width, this.height);
+            
+            if (this.phase === 'menu') return;
+            
+            // Draw connections
+            ctx.strokeStyle = '#2a3a5a';
+            ctx.lineWidth = 2;
+            for (const node of this.nodes) {
+                for (const connId of node.connections) {
+                    const other = this.nodes.find(n => n.id === connId);
+                    if (other && node.id < other.id) {
+                        ctx.beginPath();
+                        ctx.moveTo(node.x, node.y);
+                        ctx.lineTo(other.x, other.y);
+                        ctx.stroke();
+                    }
+                }
+            }
+            
+            // Draw nodes
+            for (const node of this.nodes) {
+                node.draw(ctx);
+            }
+            
+            // Draw cells
+            for (const player of this.players) {
+                for (const cell of player.cells) {
+                    cell.draw(ctx);
+                }
+            }
+            
+            // Draw planned move lines
+            if (this.phase === 'planning') {
+                ctx.setLineDash([5, 5]);
+                for (const player of this.players) {
+                    ctx.strokeStyle = player.id === 1 ? 'rgba(74,138,255,0.5)' : 'rgba(255,74,74,0.5)';
+                    ctx.lineWidth = 2;
+                    for (const cell of player.cells) {
+                        if (cell.targetNode) {
+                            ctx.beginPath();
+                            ctx.moveTo(cell.x, cell.y);
+                            ctx.lineTo(cell.targetNode.x, cell.targetNode.y);
+                            ctx.stroke();
+                        }
+                    }
+                }
+                ctx.setLineDash([]);
+            }
+            
+            // Draw hover effect
+            if (this.input.hoveredNode && this.phase === 'planning') {
+                ctx.strokeStyle = '#e94560';
+                ctx.lineWidth = 3;
+                ctx.beginPath();
+                ctx.arc(
+                    this.input.hoveredNode.x, 
+                    this.input.hoveredNode.y, 
+                    this.input.hoveredNode.radius + 5, 
+                    0, Math.PI * 2
+                );
+                ctx.stroke();
+            }
+            
+            // Draw selected cell indicator
+            if (this.input.selectedCell) {
+                ctx.strokeStyle = '#fff';
+                ctx.lineWidth = 2;
+                ctx.beginPath();
+                ctx.arc(
+                    this.input.selectedCell.x, 
+                    this.input.selectedCell.y, 
+                    20, 0, Math.PI * 2
+                );
+                ctx.stroke();
+            }
+            
+            // Draw HUD
+            this.ui.drawHUD(ctx);
+        }
+
+        gameLoop(timestamp) {
+            const dt = Math.min((timestamp - this.lastTime) / 1000, 0.1);
+            this.lastTime = timestamp;
+            
+            this.update(dt);
+            this.draw();
+            
+            requestAnimationFrame((t) => this.gameLoop(t));
+        }
+    }
+
+    // --- Initialize Game ---
+    const game = new Game();
+    </script>
+</body>
+</html>
