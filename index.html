@@ -196,6 +196,27 @@
     // HIVE CONTRACT - RTS Minimalista 2D
     // ============================================
 
+    // --- Game Configuration Constants ---
+    const CONFIG = {
+        // Scoring
+        FIRST_CLAIMER_SCORE_MULTIPLIER: 0.1,
+        VICTORY_SCORE_THRESHOLD: 50,
+        
+        // Map generation
+        MAX_CONNECTION_DISTANCE: 180,
+        
+        // Timing
+        PLANNING_TIME_SECONDS: 30,
+        RESOLVE_TIME_SECONDS: 5,
+        
+        // Replay
+        MAX_REPLAY_ROUNDS: 3,
+        
+        // AI
+        AI_EASY_GREEDY_FACTOR: 0.5,
+        AI_MEDIUM_GREEDY_FACTOR: 0.8
+    };
+
     // --- Audio Manager (Web Audio API simple) ---
     class AudioManager {
         constructor() {
@@ -393,7 +414,8 @@
             this.moving = true;
             this.progress += dt * this.speed * 0.4;
             
-            // Ease in-out
+            // Ease in-out quadratic function (easeInOutQuad):
+            // First half accelerates, second half decelerates for smooth motion
             const t = this.progress < 0.5 ? 
                 2 * this.progress * this.progress : 
                 1 - Math.pow(-2 * this.progress + 2, 2) / 2;
@@ -441,7 +463,7 @@
                 }
                 // Score for first claimed nodes
                 if (node.firstClaimer === this.id && node.owner === this.id) {
-                    this.score += node.value * 0.1;
+                    this.score += node.value * CONFIG.FIRST_CLAIMER_SCORE_MULTIPLIER;
                 }
             }
             this.resources += resourceGain;
@@ -503,7 +525,7 @@
             for (let i = 0; i < nodes.length; i++) {
                 for (let j = i + 1; j < nodes.length; j++) {
                     const dist = nodes[i].distanceTo(nodes[j]);
-                    if (dist < 180) {
+                    if (dist < CONFIG.MAX_CONNECTION_DISTANCE) {
                         nodes[i].connections.push(nodes[j].id);
                         nodes[j].connections.push(nodes[i].id);
                     }
@@ -577,7 +599,7 @@
                     
                     // Connect to nearby nodes
                     for (const node of nodes) {
-                        if (newNode.distanceTo(node) < 180) {
+                        if (newNode.distanceTo(node) < CONFIG.MAX_CONNECTION_DISTANCE) {
                             newNode.connections.push(node.id);
                             node.connections.push(newNode.id);
                         }
@@ -595,7 +617,8 @@
     class AI {
         constructor(difficulty = 'easy') {
             this.difficulty = difficulty;
-            this.greedyFactor = difficulty === 'easy' ? 0.5 : 0.8;
+            this.greedyFactor = difficulty === 'easy' ? 
+                CONFIG.AI_EASY_GREEDY_FACTOR : CONFIG.AI_MEDIUM_GREEDY_FACTOR;
         }
 
         planMoves(player, nodes, enemyCells) {
@@ -956,8 +979,8 @@
             this.rounds.push([...this.currentRound]);
             this.currentRound = [];
             
-            // Keep only last 3 rounds
-            if (this.rounds.length > 3) {
+            // Keep only last N rounds (configurable)
+            if (this.rounds.length > CONFIG.MAX_REPLAY_ROUNDS) {
                 this.rounds.shift();
             }
         }
@@ -1214,7 +1237,7 @@
         }
 
         checkVictory() {
-            const scoreToWin = 50;
+            const scoreToWin = CONFIG.VICTORY_SCORE_THRESHOLD;
             
             if (this.players[0].score >= scoreToWin && this.players[1].score >= scoreToWin) {
                 return this.players[0].score > this.players[1].score ? 1 : 
